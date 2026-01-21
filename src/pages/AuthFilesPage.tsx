@@ -187,6 +187,7 @@ export function AuthFilesPage() {
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [exportingAll, setExportingAll] = useState(false);
   const [keyStats, setKeyStats] = useState<KeyStats>({ bySource: {}, byAuthIndex: {} });
   const [usageDetails, setUsageDetails] = useState<UsageDetail[]>([]);
 
@@ -608,6 +609,70 @@ export function AuthFilesPage() {
     }
   };
 
+  // 导出全部认证文件
+  const handleExportAll = async () => {
+    // 获取要导出的文件列表（根据当前筛选条件）
+    const filesToExport = filtered.filter((f) => !isRuntimeOnlyAuthFile(f));
+
+    if (filesToExport.length === 0) {
+      showNotification(t('auth_files.export_empty', { defaultValue: '没有可导出的认证文件' }), 'warning');
+      return;
+    }
+
+    setExportingAll(true);
+    const exportData: Record<string, unknown>[] = [];
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const file of filesToExport) {
+      try {
+        const content = await authFilesApi.downloadText(file.name);
+        const parsed = JSON.parse(content);
+        exportData.push(parsed);
+        successCount++;
+      } catch {
+        // 如果下载失败，使用文件列表中的元数据
+        exportData.push({ ...file, _exportError: true });
+        failedCount++;
+      }
+    }
+
+    // 生成导出文件名
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const typeLabel = filter === 'all' ? 'all' : filter;
+    const fileName = `auth-files-${typeLabel}-${timestamp}.json`;
+
+    // 下载 JSON 文件
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    window.URL.revokeObjectURL(url);
+
+    if (failedCount > 0) {
+      showNotification(
+        t('auth_files.export_partial', {
+          success: successCount,
+          failed: failedCount,
+          defaultValue: `导出完成: ${successCount} 成功, ${failedCount} 失败`
+        }),
+        'warning'
+      );
+    } else {
+      showNotification(
+        t('auth_files.export_success', {
+          count: successCount,
+          defaultValue: `成功导出 ${successCount} 个认证文件`
+        }),
+        'success'
+      );
+    }
+
+    setExportingAll(false);
+  };
+
   // 显示详情弹窗
   const showDetails = (file: AuthFileItem) => {
     setSelectedFile(file);
@@ -954,6 +1019,9 @@ export function AuthFilesPage() {
         </div>
 
         <div className={styles.cardMeta}>
+          {item['status_message'] && (
+            <span className={styles.statusMessage}>{item['status_message']}</span>
+          )}
           <span>{t('auth_files.file_size')}: {item.size ? formatFileSize(item.size) : '-'}</span>
           <span>{t('auth_files.file_modified')}: {formatModified(item)}</span>
         </div>
@@ -1054,6 +1122,17 @@ export function AuthFilesPage() {
               disabled={loading}
             >
               {t('common.refresh')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleExportAll}
+              disabled={disableControls || loading || exportingAll || filtered.length === 0}
+              loading={exportingAll}
+            >
+              {filter === 'all'
+                ? t('auth_files.export_all_button', { defaultValue: '导出全部' })
+                : t('auth_files.export_filtered_button', { type: getTypeLabel(filter), defaultValue: `导出 ${getTypeLabel(filter)}` })}
             </Button>
             <Button
               variant="secondary"

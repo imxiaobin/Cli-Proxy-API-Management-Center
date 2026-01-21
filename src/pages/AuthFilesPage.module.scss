@@ -490,6 +490,16 @@
   border-bottom: 1px solid var(--border-color);
 }
 
+.statusMessage {
+  color: var(--danger-color);
+  font-size: 12px;
+  word-break: break-all;
+  padding: 4px 8px;
+  background-color: rgba(239, 68, 68, 0.08);
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+
 .cardStats {
   display: flex;
   flex-wrap: wrap;
