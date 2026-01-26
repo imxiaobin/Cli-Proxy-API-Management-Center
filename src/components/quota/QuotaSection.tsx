@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { triggerHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useQuotaStore, useThemeStore } from '@/stores';
-import type { AuthFileItem, ResolvedTheme } from '@/types';
+import type { AntigravityQuotaState, AuthFileItem, ResolvedTheme } from '@/types';
 import { QuotaCard } from './QuotaCard';
 import type { QuotaStatusState } from './QuotaCard';
 import { useQuotaLoader } from './useQuotaLoader';
@@ -26,6 +26,7 @@ type ViewMode = 'paged' | 'all';
 
 const MAX_ITEMS_PER_PAGE = 14;
 const MAX_SHOW_ALL_THRESHOLD = 30;
+const CLAUDE_GPT_GROUP_ID = 'claude-gpt';
 
 interface QuotaPaginationState<T> {
   pageSize: number;
@@ -121,18 +122,6 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
   const showAllAllowed = filteredFiles.length <= MAX_SHOW_ALL_THRESHOLD;
   const effectiveViewMode: ViewMode = viewMode === 'all' && !showAllAllowed ? 'paged' : viewMode;
 
-  const {
-    pageSize,
-    totalPages,
-    currentPage,
-    pageItems,
-    setPageSize,
-    goToPrev,
-    goToNext,
-    loading: sectionLoading,
-    setLoading
-  } = useQuotaPagination(filteredFiles);
-
   useEffect(() => {
     if (showAllAllowed) return;
     if (viewMode !== 'all') return;
@@ -149,6 +138,37 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
     };
   }, [showAllAllowed, viewMode]);
 
+  const { quota, loadQuota } = useQuotaLoader(config);
+
+  const sortedFiles = useMemo(() => {
+    if (config.type !== 'antigravity') return filteredFiles;
+    const indexMap = new Map(filteredFiles.map((file, index) => [file.name, index]));
+    const sorted = [...filteredFiles];
+    sorted.sort((a, b) => {
+      const aQuota = quota[a.name] as AntigravityQuotaState | undefined;
+      const bQuota = quota[b.name] as AntigravityQuotaState | undefined;
+      const aGroup = aQuota?.groups?.find((group) => group.id === CLAUDE_GPT_GROUP_ID);
+      const bGroup = bQuota?.groups?.find((group) => group.id === CLAUDE_GPT_GROUP_ID);
+      const aScore = aGroup?.remainingFraction ?? -1;
+      const bScore = bGroup?.remainingFraction ?? -1;
+      if (bScore !== aScore) return bScore - aScore;
+      return (indexMap.get(a.name) ?? 0) - (indexMap.get(b.name) ?? 0);
+    });
+    return sorted;
+  }, [config.type, filteredFiles, quota]);
+
+  const {
+    pageSize,
+    totalPages,
+    currentPage,
+    pageItems,
+    setPageSize,
+    goToPrev,
+    goToNext,
+    loading: sectionLoading,
+    setLoading
+  } = useQuotaPagination(sortedFiles);
+
   // Update page size based on view mode and columns
   useEffect(() => {
     if (effectiveViewMode === 'all') {
@@ -158,8 +178,6 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
       setPageSize(Math.min(columns * 3, MAX_ITEMS_PER_PAGE));
     }
   }, [effectiveViewMode, columns, filteredFiles.length, setPageSize]);
-
-  const { quota, loadQuota } = useQuotaLoader(config);
 
   const pendingQuotaRefreshRef = useRef(false);
   const prevFilesLoadingRef = useRef(loading);

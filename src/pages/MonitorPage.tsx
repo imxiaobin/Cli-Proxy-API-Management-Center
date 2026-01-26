@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Chart as ChartJS,
@@ -85,6 +85,8 @@ export function MonitorPage() {
   const [providerMap, setProviderMap] = useState<Record<string, string>>({});
   const [providerModels, setProviderModels] = useState<Record<string, Set<string>>>({});
   const [providerTypeMap, setProviderTypeMap] = useState<Record<string, string>>({});
+  const loadDataInFlightRef = useRef(false);
+  const loadDataQueuedRef = useRef(false);
 
   // 加载渠道名称映射（支持所有提供商类型）
   const loadProviderMap = useCallback(async () => {
@@ -201,6 +203,11 @@ export function MonitorPage() {
 
   // 加载数据
   const loadData = useCallback(async () => {
+    if (loadDataInFlightRef.current) {
+      loadDataQueuedRef.current = true;
+      return;
+    }
+    loadDataInFlightRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -218,6 +225,11 @@ export function MonitorPage() {
       setError(message);
     } finally {
       setLoading(false);
+      loadDataInFlightRef.current = false;
+      if (loadDataQueuedRef.current) {
+        loadDataQueuedRef.current = false;
+        void loadData();
+      }
     }
   }, [t, loadProviderMap]);
 

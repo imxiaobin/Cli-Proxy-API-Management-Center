@@ -91,6 +91,8 @@ export function RequestLogs({ data, loading: parentLoading, providerMap, provide
   const [logData, setLogData] = useState<UsageData | null>(null);
   const [logLoading, setLogLoading] = useState(false);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
+  const logRequestInFlightRef = useRef(false);
+  const logRequestQueuedRef = useRef(false);
 
   // 使用禁用模型 Hook
   const {
@@ -126,6 +128,11 @@ export function RequestLogs({ data, loading: parentLoading, providerMap, provide
 
   // 独立获取日志数据
   const fetchLogData = useCallback(async () => {
+    if (logRequestInFlightRef.current) {
+      logRequestQueuedRef.current = true;
+      return;
+    }
+    logRequestInFlightRef.current = true;
     setLogLoading(true);
     try {
       const response = await usageApi.getUsage();
@@ -186,6 +193,11 @@ export function RequestLogs({ data, loading: parentLoading, providerMap, provide
       console.error('日志刷新失败：', err);
     } finally {
       setLogLoading(false);
+      logRequestInFlightRef.current = false;
+      if (logRequestQueuedRef.current) {
+        logRequestQueuedRef.current = false;
+        void fetchLogDataRef.current();
+      }
     }
   }, [timeRange, customRange, apiFilter]);
 
