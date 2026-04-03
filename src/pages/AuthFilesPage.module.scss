@@ -238,6 +238,52 @@
   background: color-mix(in srgb, var(--bg-secondary) 50%, transparent);
 }
 
+.statusSummaryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.statusSummaryLabel {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.statusSummaryBadges {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.statusSummaryBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.statusSummaryEnabled {
+  background: color-mix(in srgb, var(--success-badge-bg, #d1fae5) 70%, transparent);
+  color: var(--success-badge-text, #065f46);
+}
+
+.statusSummaryDisabled {
+  background: color-mix(in srgb, var(--failure-badge-bg) 70%, transparent);
+  color: var(--failure-badge-text);
+}
+
 .filterControls {
   display: grid;
   grid-template-columns: minmax(240px, 1.4fr) repeat(2, minmax(120px, 0.72fr)) minmax(220px, auto);

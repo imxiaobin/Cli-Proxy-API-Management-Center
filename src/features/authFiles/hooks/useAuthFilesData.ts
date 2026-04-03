@@ -9,7 +9,7 @@ import { MAX_AUTH_FILE_SIZE } from '@/utils/constants';
 import { downloadBlob } from '@/utils/download';
 import {
   getTypeLabel,
-  hasAuthFileStatusMessage,
+  hasAuthFileProblem,
   isRuntimeOnlyAuthFile,
 } from '@/features/authFiles/constants';
 
@@ -25,6 +25,7 @@ export type UseAuthFilesDataResult = {
   selectedFiles: Set<string>;
   selectionCount: number;
   loading: boolean;
+  checkingProblems: boolean;
   error: string;
   uploading: boolean;
   deleting: string | null;
@@ -39,6 +40,11 @@ export type UseAuthFilesDataResult = {
   handleDeleteAll: (options: DeleteAllOptions) => void;
   handleDownload: (name: string) => Promise<void>;
   handleStatusToggle: (item: AuthFileItem, enabled: boolean) => Promise<void>;
+  checkAllProblems: () => Promise<{
+    total: number;
+    problematic: number;
+    problematicNames: string[];
+  }>;
   toggleSelect: (name: string) => void;
   selectAllVisible: (visibleFiles: AuthFileItem[]) => void;
   invertVisibleSelection: (visibleFiles: AuthFileItem[]) => void;
@@ -59,6 +65,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
 
   const [files, setFiles] = useState<AuthFileItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [checkingProblems, setCheckingProblems] = useState(false);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -301,12 +308,12 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
               setFiles((prev) => prev.filter((file) => isRuntimeOnlyAuthFile(file)));
               deselectAll();
             } else {
-              const filesToDelete = files.filter((file) => {
-                if (isRuntimeOnlyAuthFile(file)) return false;
-                if (isFiltered && file.type !== filter) return false;
-                if (isProblemOnly && !hasAuthFileStatusMessage(file)) return false;
-                return true;
-              });
+                const filesToDelete = files.filter((file) => {
+                  if (isRuntimeOnlyAuthFile(file)) return false;
+                  if (isFiltered && file.type !== filter) return false;
+                  if (isProblemOnly && !hasAuthFileProblem(file)) return false;
+                  return true;
+                });
 
               if (filesToDelete.length === 0) {
                 const emptyMessage = isProblemOnly
@@ -378,6 +385,26 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     },
     [applyDeletedFiles, deselectAll, files, showConfirmation, showNotification, t]
   );
+
+  const checkAllProblems = useCallback(async () => {
+    setCheckingProblems(true);
+    try {
+      const data = await authFilesApi.list();
+      const latestFiles = data?.files || [];
+      setFiles(latestFiles);
+
+      const checkableFiles = latestFiles.filter((file) => !isRuntimeOnlyAuthFile(file));
+      const problematicFiles = checkableFiles.filter(hasAuthFileProblem);
+
+      return {
+        total: checkableFiles.length,
+        problematic: problematicFiles.length,
+        problematicNames: problematicFiles.map((file) => file.name),
+      };
+    } finally {
+      setCheckingProblems(false);
+    }
+  }, []);
 
   const handleDownload = useCallback(
     async (name: string) => {
@@ -609,6 +636,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     selectedFiles,
     selectionCount,
     loading,
+    checkingProblems,
     error,
     uploading,
     deleting,
@@ -623,6 +651,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     handleDeleteAll,
     handleDownload,
     handleStatusToggle,
+    checkAllProblems,
     toggleSelect,
     selectAllVisible,
     invertVisibleSelection,

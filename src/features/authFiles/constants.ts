@@ -38,7 +38,7 @@ export const QUOTA_PROVIDER_TYPES = new Set<QuotaProviderType>([
 ]);
 
 export const MIN_CARD_PAGE_SIZE = 3;
-export const MAX_CARD_PAGE_SIZE = 30;
+export const MAX_CARD_PAGE_SIZE = 1000;
 export const AUTH_FILE_REFRESH_WARNING_MS = 24 * 60 * 60 * 1000;
 
 export const INTEGER_STRING_PATTERN = /^[+-]?\d+$/;
@@ -144,6 +144,14 @@ export const getAuthFileStatusMessage = (file: AuthFileItem): string => {
 
 export const hasAuthFileStatusMessage = (file: AuthFileItem): boolean =>
   getAuthFileStatusMessage(file).length > 0;
+
+const HEALTHY_STATUS_MESSAGES = new Set(['ok', 'healthy', 'ready', 'success', 'available']);
+
+export const hasAuthFileProblem = (file: AuthFileItem): boolean => {
+  const statusMessage = getAuthFileStatusMessage(file);
+  if (!statusMessage) return false;
+  return !HEALTHY_STATUS_MESSAGES.has(statusMessage.toLowerCase());
+};
 
 export const getTypeLabel = (t: TFunction, type: string): string => {
   const key = `auth_files.filter_${type}`;

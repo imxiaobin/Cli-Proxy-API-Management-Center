@@ -32,7 +32,7 @@ import {
   getAuthFileIcon,
   getTypeColor,
   getTypeLabel,
-  hasAuthFileStatusMessage,
+  hasAuthFileProblem,
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
   parsePriorityValue,
@@ -80,6 +80,7 @@ const buildWildcardSearch = (value: string): RegExp | null => {
 export function AuthFilesPage() {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
+  const showConfirmation = useNotificationStore((state) => state.showConfirmation);
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const resolvedTheme: ResolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const pageTransitionLayer = usePageTransitionLayer();
@@ -111,6 +112,7 @@ export function AuthFilesPage() {
     selectedFiles,
     selectionCount,
     loading,
+    checkingProblems,
     error,
     uploading,
     deleting,
@@ -125,6 +127,7 @@ export function AuthFilesPage() {
     handleDeleteAll,
     handleDownload,
     handleStatusToggle,
+    checkAllProblems,
     toggleSelect,
     selectAllVisible,
     invertVisibleSelection,
@@ -355,8 +358,27 @@ export function AuthFilesPage() {
   }, [files]);
 
   const filesMatchingProblemFilter = useMemo(
-    () => (problemOnly ? files.filter(hasAuthFileStatusMessage) : files),
+    () => (problemOnly ? files.filter(hasAuthFileProblem) : files),
     [files, problemOnly]
+  );
+  const filesInCurrentScope = useMemo(
+    () =>
+      files.filter((file) => {
+        if (isRuntimeOnlyAuthFile(file)) return false;
+        if (filter !== 'all' && file.type !== filter) return false;
+        if (problemOnly && !hasAuthFileProblem(file)) return false;
+        return true;
+      }),
+    [files, filter, problemOnly]
+  );
+  const problematicFilesInScope = useMemo(
+    () =>
+      files.filter((file) => {
+        if (isRuntimeOnlyAuthFile(file)) return false;
+        if (filter !== 'all' && file.type !== filter) return false;
+        return hasAuthFileProblem(file);
+      }),
+    [files, filter]
   );
 
   const sortOptions = useMemo(
@@ -419,6 +441,20 @@ export function AuthFilesPage() {
     return copy;
   }, [filtered, sortMode]);
 
+  const { enabledCount, disabledCount } = useMemo(() => {
+    const scopeFiles = filtered.filter((file) => !isRuntimeOnlyAuthFile(file));
+    let enabled = 0;
+    let disabled = 0;
+    scopeFiles.forEach((file) => {
+      if (file.disabled === true) {
+        disabled += 1;
+      } else {
+        enabled += 1;
+      }
+    });
+    return { enabledCount: enabled, disabledCount: disabled };
+  }, [filtered]);
+
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const start = (currentPage - 1) * pageSize;
@@ -454,6 +490,130 @@ export function AuthFilesPage() {
     },
     [showNotification, t]
   );
+
+  const handleDisableProblemCredentials = useCallback(() => {
+    const isFiltered = filter !== 'all';
+    const typeLabel = isFiltered ? getTypeLabel(t, filter) : t('auth_files.filter_all');
+    const targetNames = problematicFilesInScope
+      .filter((file) => file.disabled !== true && statusUpdating[file.name] !== true)
+      .map((file) => file.name);
+
+    if (problematicFilesInScope.length === 0) {
+      showNotification(
+        isFiltered
+          ? t('auth_files.disable_problem_filtered_none', { type: typeLabel })
+          : t('auth_files.disable_problem_none'),
+        'info'
+      );
+      return;
+    }
+
+    if (targetNames.length === 0) {
+      showNotification(t('auth_files.disable_problem_already_disabled'), 'info');
+      return;
+    }
+
+    showConfirmation({
+      title: t('auth_files.disable_problem_title'),
+      message: isFiltered
+        ? t('auth_files.disable_problem_filtered_confirm', {
+            count: targetNames.length,
+            type: typeLabel,
+          })
+        : t('auth_files.disable_problem_confirm', { count: targetNames.length }),
+      variant: 'danger',
+      confirmText: t('common.confirm'),
+      onConfirm: async () => {
+        await batchSetStatus(targetNames, false);
+      },
+    });
+  }, [
+    batchSetStatus,
+    filter,
+    problematicFilesInScope,
+    showConfirmation,
+    showNotification,
+    statusUpdating,
+    t,
+  ]);
+
+  const handleEnableAllCredentials = useCallback(() => {
+    const isFiltered = filter !== 'all';
+    const typeLabel = isFiltered ? getTypeLabel(t, filter) : t('auth_files.filter_all');
+    const targetNames = filesInCurrentScope
+      .filter((file) => file.disabled === true && statusUpdating[file.name] !== true)
+      .map((file) => file.name);
+
+    if (filesInCurrentScope.length === 0) {
+      showNotification(
+        isFiltered
+          ? t('auth_files.enable_all_filtered_none', { type: typeLabel })
+          : t('auth_files.enable_all_none'),
+        'info'
+      );
+      return;
+    }
+
+    if (targetNames.length === 0) {
+      showNotification(t('auth_files.enable_all_already_enabled'), 'info');
+      return;
+    }
+
+    showConfirmation({
+      title: t('auth_files.enable_all_title'),
+      message: isFiltered
+        ? t('auth_files.enable_all_filtered_confirm', {
+            count: targetNames.length,
+            type: typeLabel,
+          })
+        : t('auth_files.enable_all_confirm', { count: targetNames.length }),
+      variant: 'danger',
+      confirmText: t('common.confirm'),
+      onConfirm: async () => {
+        await batchSetStatus(targetNames, true);
+      },
+    });
+  }, [
+    batchSetStatus,
+    filesInCurrentScope,
+    filter,
+    showConfirmation,
+    showNotification,
+    statusUpdating,
+    t,
+  ]);
+
+  const handleCheckAllCredentialProblems = useCallback(async () => {
+    try {
+      const result = await checkAllProblems();
+      if (result.total === 0) {
+        showNotification(t('auth_files.problem_check_none'), 'info');
+        return;
+      }
+
+      if (result.problematic === 0) {
+        showNotification(
+          t('auth_files.problem_check_all_healthy', { total: result.total }),
+          'success'
+        );
+        return;
+      }
+
+      const previewNames = result.problematicNames.slice(0, 3).join(', ');
+      const remain = result.problematic - Math.min(result.problematic, 3);
+      const suffix = remain > 0 ? t('auth_files.problem_check_more', { count: remain }) : '';
+      showNotification(
+        `${t('auth_files.problem_check_found', {
+          total: result.total,
+          problematic: result.problematic,
+        })}${previewNames ? `: ${previewNames}${suffix}` : ''}`,
+        'warning'
+      );
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : t('notification.refresh_failed');
+      showNotification(`${t('auth_files.problem_check_failed')}: ${errorMessage}`, 'error');
+    }
+  }, [checkAllProblems, showNotification, t]);
 
   const openExcludedEditor = useCallback(
     (provider?: string) => {
@@ -641,6 +801,14 @@ export function AuthFilesPage() {
     : filter === 'all'
       ? t('auth_files.delete_all_button')
       : `${t('common.delete')} ${getTypeLabel(t, filter)}`;
+  const disableProblemButtonLabel =
+    filter === 'all'
+      ? t('auth_files.disable_problem_button')
+      : t('auth_files.disable_problem_button_with_type', { type: getTypeLabel(t, filter) });
+  const enableAllButtonLabel =
+    filter === 'all'
+      ? t('auth_files.enable_all_button')
+      : t('auth_files.enable_all_button_with_type', { type: getTypeLabel(t, filter) });
 
   return (
     <div className={styles.container}>
@@ -657,12 +825,39 @@ export function AuthFilesPage() {
               {t('common.refresh')}
             </Button>
             <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleCheckAllCredentialProblems()}
+              disabled={disableControls || checkingProblems}
+              loading={checkingProblems}
+            >
+              {t('auth_files.problem_check_button')}
+            </Button>
+            <Button
               size="sm"
               onClick={handleUploadClick}
               disabled={disableControls || uploading}
               loading={uploading}
             >
               {t('auth_files.upload_button')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleEnableAllCredentials}
+              disabled={disableControls || loading || batchStatusUpdating}
+              loading={batchStatusUpdating}
+            >
+              {enableAllButtonLabel}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleDisableProblemCredentials}
+              disabled={disableControls || loading || batchStatusUpdating}
+              loading={batchStatusUpdating}
+            >
+              {disableProblemButtonLabel}
             </Button>
             <Button
               variant="danger"
@@ -698,6 +893,23 @@ export function AuthFilesPage() {
 
           <div className={styles.filterContent}>
             <div className={styles.filterControlsPanel}>
+              <div className={styles.statusSummaryRow}>
+                <span className={styles.statusSummaryLabel}>
+                  {t('auth_files.account_status_summary')}
+                </span>
+                <div className={styles.statusSummaryBadges}>
+                  <span className={`${styles.statusSummaryBadge} ${styles.statusSummaryEnabled}`}>
+                    {t('auth_files.account_enabled_count', {
+                      value: loading ? '--' : enabledCount,
+                    })}
+                  </span>
+                  <span className={`${styles.statusSummaryBadge} ${styles.statusSummaryDisabled}`}>
+                    {t('auth_files.account_disabled_count', {
+                      value: loading ? '--' : disabledCount,
+                    })}
+                  </span>
+                </div>
+              </div>
               <div className={styles.filterControls}>
                 <div className={styles.filterItem}>
                   <label>{t('auth_files.search_label')}</label>
