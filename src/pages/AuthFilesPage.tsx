@@ -30,6 +30,7 @@ import {
   QUOTA_PROVIDER_TYPES,
   clampCardPageSize,
   getAuthFileIcon,
+  hasAuthFile401Problem,
   getTypeColor,
   getTypeLabel,
   hasAuthFileProblem,
@@ -380,6 +381,15 @@ export function AuthFilesPage() {
       }),
     [files, filter]
   );
+  const unauthorizedFilesInScope = useMemo(
+    () =>
+      files.filter((file) => {
+        if (isRuntimeOnlyAuthFile(file)) return false;
+        if (filter !== 'all' && file.type !== filter) return false;
+        return hasAuthFile401Problem(file);
+      }),
+    [files, filter]
+  );
 
   const sortOptions = useMemo(
     () => [
@@ -615,6 +625,24 @@ export function AuthFilesPage() {
     }
   }, [checkAllProblems, showNotification, t]);
 
+  const handleAutoClear401Credentials = useCallback(() => {
+    const isFiltered = filter !== 'all';
+    const typeLabel = isFiltered ? getTypeLabel(t, filter) : t('auth_files.filter_all');
+    const targetNames = unauthorizedFilesInScope.map((file) => file.name);
+
+    if (targetNames.length === 0) {
+      showNotification(
+        isFiltered
+          ? t('auth_files.clear_401_filtered_none', { type: typeLabel })
+          : t('auth_files.clear_401_none'),
+        'info'
+      );
+      return;
+    }
+
+    batchDelete(targetNames);
+  }, [batchDelete, filter, showNotification, t, unauthorizedFilesInScope]);
+
   const openExcludedEditor = useCallback(
     (provider?: string) => {
       const providerValue = (provider || (filter !== 'all' ? String(filter) : '')).trim();
@@ -809,6 +837,10 @@ export function AuthFilesPage() {
     filter === 'all'
       ? t('auth_files.enable_all_button')
       : t('auth_files.enable_all_button_with_type', { type: getTypeLabel(t, filter) });
+  const clear401ButtonLabel =
+    filter === 'all'
+      ? t('auth_files.clear_401_button')
+      : t('auth_files.clear_401_button_with_type', { type: getTypeLabel(t, filter) });
 
   return (
     <div className={styles.container}>
@@ -858,6 +890,14 @@ export function AuthFilesPage() {
               loading={batchStatusUpdating}
             >
               {disableProblemButtonLabel}
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={handleAutoClear401Credentials}
+              disabled={disableControls || loading || deletingAll}
+            >
+              {clear401ButtonLabel}
             </Button>
             <Button
               variant="danger"

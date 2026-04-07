@@ -504,6 +504,10 @@
     "enable_all_none": "No enableable credentials in the current scope",
     "enable_all_filtered_none": "No enableable {{type}} credentials in the current scope",
     "enable_all_already_enabled": "All credentials in the current scope are already enabled",
+    "clear_401_button": "Auto Clear 401 Credentials",
+    "clear_401_button_with_type": "Auto Clear {{type}} 401 Credentials",
+    "clear_401_none": "No 401-failed credentials in the current scope",
+    "clear_401_filtered_none": "No 401-failed {{type}} credentials in the current scope",
     "disable_problem_button": "Disable Problem Files",
     "disable_problem_button_with_type": "Disable Problematic {{type}} Files",
     "disable_problem_title": "Disable Problematic Credentials",
@@ -1379,7 +1383,12 @@
     "refresh_files": "Refresh auth files",
     "refresh_files_and_quota": "Refresh files & quota",
     "refresh_all_credentials": "Refresh all credentials",
-    "card_idle_hint": "Use the top \"Refresh all credentials\" button to fetch the latest quota data."
+    "card_idle_hint": "Use the top \"Refresh all credentials\" button to fetch the latest quota data.",
+    "delete_401_accounts": "Delete 401 Accounts",
+    "delete_401_none": "No 401-failed {{type}} accounts in the current section",
+    "delete_401_confirm": "Delete {{count}} 401-failed {{type}} accounts? This action cannot be undone.",
+    "delete_401_success": "Deleted {{count}} 401-failed {{type}} accounts",
+    "delete_401_partial": "{{type}} 401-failed account deletion finished: {{success}} succeeded, {{failed}} failed"
   },
   "system_info": {
     "title": "Management Center Info",

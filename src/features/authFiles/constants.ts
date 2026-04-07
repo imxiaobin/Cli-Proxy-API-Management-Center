@@ -147,11 +147,82 @@ export const hasAuthFileStatusMessage = (file: AuthFileItem): boolean =>
 
 const HEALTHY_STATUS_MESSAGES = new Set(['ok', 'healthy', 'ready', 'success', 'available']);
 
+const parseHttpStatusCode = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const rounded = Math.round(value);
+    return rounded >= 100 && rounded <= 599 ? rounded : undefined;
+  }
+
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || !INTEGER_STRING_PATTERN.test(trimmed)) return undefined;
+  const parsed = Number.parseInt(trimmed, 10);
+  return parsed >= 100 && parsed <= 599 ? parsed : undefined;
+};
+
+const parseStatusPayload = (value: string): Record<string, unknown> | null => {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
+const extractStatusCodeFromPayload = (payload: Record<string, unknown>): number | undefined => {
+  const topLevelStatus = parseHttpStatusCode(payload.status ?? payload.statusCode);
+  if (topLevelStatus !== undefined) return topLevelStatus;
+
+  const error = payload.error;
+  if (!error || typeof error !== 'object' || Array.isArray(error)) return undefined;
+
+  const errorRecord = error as Record<string, unknown>;
+  return parseHttpStatusCode(errorRecord.status ?? errorRecord.statusCode);
+};
+
+export const getAuthFileStatusCode = (file: AuthFileItem): number | undefined => {
+  const directStatus = parseHttpStatusCode(file.status ?? file['status']);
+  if (directStatus !== undefined) return directStatus;
+
+  const statusMessage = getAuthFileStatusMessage(file);
+  if (!statusMessage) return undefined;
+
+  const payload = parseStatusPayload(statusMessage);
+  if (payload) {
+    const payloadStatus = extractStatusCodeFromPayload(payload);
+    if (payloadStatus !== undefined) return payloadStatus;
+  }
+
+  const lowerMessage = statusMessage.toLowerCase();
+  if (
+    lowerMessage.includes('token_invalidated') ||
+    lowerMessage.includes('authentication token has been invalidated')
+  ) {
+    return 401;
+  }
+
+  const statusMatch = statusMessage.match(
+    /\b(?:status|status_code|statusCode)\b[^0-9]{0,8}([1-5]\d{2})\b/i
+  );
+  if (statusMatch?.[1]) {
+    return Number.parseInt(statusMatch[1], 10);
+  }
+
+  return undefined;
+};
+
 export const hasAuthFileProblem = (file: AuthFileItem): boolean => {
   const statusMessage = getAuthFileStatusMessage(file);
   if (!statusMessage) return false;
   return !HEALTHY_STATUS_MESSAGES.has(statusMessage.toLowerCase());
 };
+
+export const hasAuthFile401Problem = (file: AuthFileItem): boolean =>
+  getAuthFileStatusCode(file) === 401;
 
 export const getTypeLabel = (t: TFunction, type: string): string => {
   const key = `auth_files.filter_${type}`;

@@ -504,6 +504,10 @@
     "enable_all_none": "当前范围内没有可启用的凭证",
     "enable_all_filtered_none": "当前筛选类型 ({{type}}) 下没有可启用的凭证",
     "enable_all_already_enabled": "当前范围内凭证已全部启用",
+    "clear_401_button": "自动清除401帐号",
+    "clear_401_button_with_type": "自动清除 {{type}} 401帐号",
+    "clear_401_none": "当前范围内没有401异常帐号",
+    "clear_401_filtered_none": "当前筛选类型 ({{type}}) 下没有401异常帐号",
     "disable_problem_button": "禁用问题凭证",
     "disable_problem_button_with_type": "禁用 {{type}} 问题凭证",
     "disable_problem_title": "禁用问题凭证",
@@ -1379,7 +1383,12 @@
     "refresh_files": "刷新认证文件",
     "refresh_files_and_quota": "刷新认证文件&额度",
     "refresh_all_credentials": "刷新全部凭证",
-    "card_idle_hint": "请使用顶部“刷新全部凭证”按钮获取最新额度。"
+    "card_idle_hint": "请使用顶部“刷新全部凭证”按钮获取最新额度。",
+    "delete_401_accounts": "删除401帐号",
+    "delete_401_none": "{{type}} 当前没有401异常帐号",
+    "delete_401_confirm": "确定要删除 {{type}} 下 {{count}} 个401异常帐号吗？此操作不可恢复！",
+    "delete_401_success": "已删除 {{type}} 下 {{count}} 个401异常帐号",
+    "delete_401_partial": "{{type}} 401异常帐号删除完成，成功 {{success}} 个，失败 {{failed}} 个"
   },
   "system_info": {
     "title": "管理中心信息",

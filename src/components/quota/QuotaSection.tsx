@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { triggerHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useNotificationStore, useQuotaStore, useThemeStore } from '@/stores';
+import { authFilesApi } from '@/services/api';
 import type { AuthFileItem, ResolvedTheme } from '@/types';
 import { getStatusFromError } from '@/utils/quota';
 import { QuotaCard } from './QuotaCard';
@@ -95,23 +96,40 @@ interface QuotaSectionProps<TState extends QuotaStatusState, TData> {
   files: AuthFileItem[];
   loading: boolean;
   disabled: boolean;
+  onFilesDeleted: (names: string[]) => void;
 }
+
+const hasQuota401Problem = (state?: QuotaStatusState): boolean => {
+  if (!state || state.status !== 'error') return false;
+  if (state.errorStatus === 401) return true;
+
+  const message = (state.error || '').toLowerCase();
+  return (
+    message.includes('401') ||
+    message.includes('token_invalidated') ||
+    message.includes('token has been invalidated') ||
+    message.includes('authentication token has been invalidated')
+  );
+};
 
 export function QuotaSection<TState extends QuotaStatusState, TData>({
   config,
   files,
   loading,
-  disabled
+  disabled,
+  onFilesDeleted
 }: QuotaSectionProps<TState, TData>) {
   const { t } = useTranslation();
   const resolvedTheme: ResolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const showNotification = useNotificationStore((state) => state.showNotification);
+  const showConfirmation = useNotificationStore((state) => state.showConfirmation);
   const setQuota = useQuotaStore((state) => state[config.storeSetter]) as QuotaSetter<
     Record<string, TState>
   >;
 
   const [columns, gridRef] = useGridColumns(380); // Min card width 380px matches SCSS
   const [viewMode, setViewMode] = useState<ViewMode>('paged');
+  const [deleting401, setDeleting401] = useState(false);
 
   const filteredFiles = useMemo(() => files.filter((file) => config.filterFn(file)), [
     files,
@@ -142,6 +160,15 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
   }, [effectiveViewMode, columns, filteredFiles.length, setPageSize]);
 
   const { quota, loadQuota } = useQuotaLoader(config);
+  const providerLabel = useMemo(() => {
+    const key = `auth_files.filter_${config.type}`;
+    const translated = t(key);
+    return translated !== key ? translated : config.type;
+  }, [config.type, t]);
+  const unauthorizedFiles = useMemo(
+    () => filteredFiles.filter((file) => hasQuota401Problem(quota[file.name])),
+    [filteredFiles, quota]
+  );
 
   const pendingQuotaRefreshRef = useRef(false);
   const prevFilesLoadingRef = useRef(loading);
@@ -217,6 +244,83 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
     [config, disabled, quota, setQuota, showNotification, t]
   );
 
+  const handleDelete401Accounts = useCallback(() => {
+    const targetNames = unauthorizedFiles.map((file) => file.name);
+
+    if (targetNames.length === 0) {
+      showNotification(t('quota_management.delete_401_none', { type: providerLabel }), 'info');
+      return;
+    }
+
+    showConfirmation({
+      title: t('quota_management.delete_401_accounts'),
+      message: t('quota_management.delete_401_confirm', {
+        count: targetNames.length,
+        type: providerLabel
+      }),
+      variant: 'danger',
+      confirmText: t('common.confirm'),
+      onConfirm: async () => {
+        setDeleting401(true);
+        try {
+          const result = await authFilesApi.deleteFiles(targetNames);
+          const failedNames = new Set(
+            result.failed
+              .map((entry) => entry.name.trim())
+              .filter(Boolean)
+          );
+          const deletedNames =
+            result.files.length > 0
+              ? result.files
+              : targetNames.filter((name) => !failedNames.has(name));
+
+          if (deletedNames.length > 0) {
+            onFilesDeleted(deletedNames);
+            setQuota((prev) => {
+              const next = { ...prev };
+              deletedNames.forEach((name) => {
+                delete next[name];
+              });
+              return next;
+            });
+          }
+
+          if (result.failed.length === 0) {
+            showNotification(
+              t('quota_management.delete_401_success', {
+                count: result.deleted,
+                type: providerLabel
+              }),
+              'success'
+            );
+          } else {
+            showNotification(
+              t('quota_management.delete_401_partial', {
+                success: result.deleted,
+                failed: result.failed.length,
+                type: providerLabel
+              }),
+              'warning'
+            );
+          }
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : t('common.unknown_error');
+          showNotification(`${t('notification.delete_failed')}: ${message}`, 'error');
+        } finally {
+          setDeleting401(false);
+        }
+      }
+    });
+  }, [
+    onFilesDeleted,
+    providerLabel,
+    setQuota,
+    showConfirmation,
+    showNotification,
+    t,
+    unauthorizedFiles
+  ]);
+
   const titleNode = (
     <div className={styles.titleWrapper}>
       <span>{t(`${config.i18nPrefix}.title`)}</span>
@@ -257,6 +361,15 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
               {t('auth_files.view_mode_all')}
             </Button>
           </div>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={handleDelete401Accounts}
+            disabled={disabled || isRefreshing || deleting401}
+            loading={deleting401}
+          >
+            {t('quota_management.delete_401_accounts')}
+          </Button>
           <Button
             variant="secondary"
             size="sm"

@@ -43,6 +43,23 @@ const getStatusCode = (err: unknown): number | undefined => {
   return undefined;
 };
 
+const getErrorMessage = (err: unknown): string =>
+  err instanceof Error ? err.message : 'Unknown error';
+
+const shouldFallbackToLegacyDelete = (err: unknown): boolean => {
+  const status = getStatusCode(err);
+  if (status === 400 || status === 405 || status === 415 || status === 422) {
+    return true;
+  }
+  const message = getErrorMessage(err).toLowerCase();
+  return (
+    message.includes('invalid name') ||
+    message.includes('missing name') ||
+    message.includes('name is required') ||
+    message.includes('unsupported media type')
+  );
+};
+
 const normalizeRequestedAuthFileNames = (names: string[]): string[] => {
   const seen = new Set<string>();
   const normalized: string[] = [];
@@ -422,13 +439,45 @@ export const authFilesApi = {
       return { status: 'ok', deleted: 0, files: [], failed: [] };
     }
 
-    const payload = await apiClient.delete<AuthFileBatchDeleteResponse>('/auth-files', {
-      data: { names: requestedNames },
-    });
-    return normalizeBatchDeleteResponse(payload, requestedNames);
+    try {
+      const payload = await apiClient.delete<AuthFileBatchDeleteResponse>('/auth-files', {
+        data: { names: requestedNames },
+      });
+      return normalizeBatchDeleteResponse(payload, requestedNames);
+    } catch (err: unknown) {
+      if (!shouldFallbackToLegacyDelete(err)) {
+        throw err;
+      }
+
+      const deletedFiles: string[] = [];
+      const failed: AuthFileBatchFailure[] = [];
+
+      for (const name of requestedNames) {
+        try {
+          await apiClient.delete(`/auth-files?name=${encodeURIComponent(name)}`);
+          deletedFiles.push(name);
+        } catch (deleteErr: unknown) {
+          failed.push({ name, error: getErrorMessage(deleteErr) });
+        }
+      }
+
+      return {
+        status: failed.length === 0 ? 'ok' : deletedFiles.length > 0 ? 'partial' : 'error',
+        deleted: deletedFiles.length,
+        files: deletedFiles,
+        failed,
+      };
+    }
   },
 
-  deleteFile: (name: string) => authFilesApi.deleteFiles([name]),
+  deleteFile: async (name: string) => {
+    const result = await authFilesApi.deleteFiles([name]);
+    if (result.deleted > 0) {
+      return result;
+    }
+    const reason = result.failed[0]?.error || 'Delete failed';
+    throw new Error(reason);
+  },
 
   deleteAll: () => apiClient.delete('/auth-files', { params: { all: true } }),
 

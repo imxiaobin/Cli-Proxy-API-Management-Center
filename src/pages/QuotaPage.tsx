@@ -28,6 +28,20 @@ export function QuotaPage() {
 
   const disableControls = connectionStatus !== 'connected';
 
+  const handleFilesDeleted = useCallback((names: string[]) => {
+    const deletedNames = Array.from(
+      new Set(
+        names
+          .map((name) => name.trim())
+          .filter(Boolean)
+      )
+    );
+    if (deletedNames.length === 0) return;
+
+    const deletedSet = new Set(deletedNames);
+    setFiles((prev) => prev.filter((file) => !deletedSet.has(file.name)));
+  }, []);
+
   const loadConfig = useCallback(async () => {
     try {
       await configFileApi.fetchConfigYaml();
@@ -76,30 +90,35 @@ export function QuotaPage() {
         files={files}
         loading={loading}
         disabled={disableControls}
+        onFilesDeleted={handleFilesDeleted}
       />
       <QuotaSection
         config={ANTIGRAVITY_CONFIG}
         files={files}
         loading={loading}
         disabled={disableControls}
+        onFilesDeleted={handleFilesDeleted}
       />
       <QuotaSection
         config={CODEX_CONFIG}
         files={files}
         loading={loading}
         disabled={disableControls}
+        onFilesDeleted={handleFilesDeleted}
       />
       <QuotaSection
         config={GEMINI_CLI_CONFIG}
         files={files}
         loading={loading}
         disabled={disableControls}
+        onFilesDeleted={handleFilesDeleted}
       />
       <QuotaSection
         config={KIMI_CONFIG}
         files={files}
         loading={loading}
         disabled={disableControls}
+        onFilesDeleted={handleFilesDeleted}
       />
     </div>
   );
